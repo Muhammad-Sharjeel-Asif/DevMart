@@ -1,0 +1,357 @@
+prompt1
+now i want to create USER MODEL inside the File: models/user.py
+
+This is your core entity.
+Everything connects to User.
+
+A user can:
+- Create gigs
+- Place orders
+- Send messages
+- Leave reviews
+- Act as freelancer OR client
+
+What fields we need
+
+Field	Why
+id	Unique identifier
+email	Login
+hashed_password	Security
+full_name	Display
+bio	Profile
+avatar_url	Profile image
+is_admin	Admin control
+created_at	Audit
+Implementation Logic (Conceptual)
+
+You must:
+- Use UUID as primary key
+- Use default_factory=uuid4
+- Use datetime.utcnow
+- Add relationships
+- Relationships Required
+
+User must relate to:
+- gigs (one-to-many)
+- orders_as_client
+- orders_as_freelancer
+- sent_messages
+- received_messages
+- reviews_given
+- reviews_received
+
+This is critical, do it properly.
+
+
+
+
+
+
+
+prompt2
+now i want to create GIG MODEL inside File: models/gig.py
+
+Importance:
+- Freelancers create gigs.
+- Clients purchase gigs.
+
+Required Fields
+Field	Type
+id	UUID
+freelancer_id	FK
+title	string
+description	text
+price	decimal
+delivery_days	int
+is_active	bool
+created_at	datetime
+
+Relationship Rules
+Each gig belongs to ONE freelancer
+One freelancer can have MANY gigs
+One gig can have MANY orders
+
+So define:
+- freelancer: Relationship(back_populates="gigs")
+- orders: Relationship(back_populates="gig")
+
+
+
+
+
+
+prompt3
+ORDER MODEL
+
+File: models/order.py
+
+This model controls:
+- Payment system
+- Work lifecycle
+- Reviews
+- Messaging
+
+Required Fields
+Field	Purpose
+id	UUID
+gig_id	What was purchased
+client_id	Who ordered
+freelancer_id	Who will deliver
+status	Lifecycle
+payment_status	Manual confirmation
+created_at	Audit
+Relationships
+
+Order must connect to:
+- gig
+- client (User)
+- freelancer (User)
+- payment_proof
+- messages
+- reviews
+
+Important:
+Because both client and freelancer reference User,
+you must define foreign_keys explicitly.
+
+🔷 4️⃣ PAYMENT_PROOF MODEL
+
+File: models/payment.py
+Why needed
+- Because payment is manual.
+- Client uploads:
+- Transaction ID
+- Amount
+- Payer name
+- Freelancer verifies it.
+
+Required Fields
+Field	Purpose
+id	UUID
+order_id	FK
+proof_reference	transaction id
+payer_name	name
+amount	decimal
+submitted_at	datetime
+verified	bool
+
+Relationship:
+- order → back_populates="payment_proof"
+- One-to-one relationship.
+
+🔷 5️⃣ MESSAGE MODEL
+File: models/message.py
+Why needed
+- For user-to-user communication.
+
+Required Fields
+Field	Purpose
+id	UUID
+sender_id	FK user
+receiver_id	FK user
+order_id	Optional FK
+content	text
+created_at	datetime
+
+Relationships:
+- sender
+- receiver
+- order (nullable)
+
+🔷 6️⃣ REVIEW MODEL
+
+File: models/review.py
+
+Why needed
+- After order completion:
+- Client reviews freelancer
+- Freelancer reviews client
+
+Required Fields
+Field	Purpose
+id	UUID
+order_id	FK
+reviewer_id	FK
+reviewee_id	FK
+rating	int
+comment	text
+created_at	datetime
+
+Add constraint:
+- rating between 1 and 5
+
+Also:
+- Prevent duplicate reviews per user per order (unique constraint)
+
+
+
+
+
+
+
+prompt4
+check that you have done the following:
+se UUID
+Always:
+from uuid import UUID, uuid4
+
+
+Define:
+id: UUID = Field(default_factory=uuid4, primary_key=True)
+
+Use datetime correctly
+from datetime import datetime
+created_at: datetime = Field(default_factory=datetime.utcnow)
+
+Decimal for money
+Never use float.
+
+Use:
+
+from decimal import Decimal
+price: Decimal
+
+Relationships
+
+defined:
+- Relationship(back_populates="...")
+- And defined matching back_populates on both models.
+
+ensure you haven't made these mistakes:
+- Forgetting foreign key
+- Forgetting back_populates
+- Using float for money
+- Not specifying foreign_keys when referencing same table twice
+- Missing unique constraints 
+- Not setting nullable properly
+
+After doing all the above tasks:
+Open models/__init__.py and Import all models:
+from .user import User
+from .gig import Gig
+from .order import Order
+from .message import Message
+from .review import Review
+from .payment import PaymentProof
+
+This ensures SQLModel registers metadata.
+
+
+
+
+
+prompt5
+first analyze the prd of the project inside docs and after that analyze the whole project. tell what has been done, is the done project accoding to the prd or not. after that what has to be done next.
+
+
+
+
+
+prompt6:
+We must prepare FastAPI to read JWT issued by Next.js. 
+for that:
+1. Create app/core/security.py and Implement:
+- SECRET_KEY (must match Next.js)
+- ALGORITHM = HS256
+- Function verify_jwt(token: str)
+- Decode using python-jose
+- Return payload
+
+2. Create app/dependencies/auth.py and implement this Logic:
+- Extract cookie from request
+- Get JWT token
+- Verify token
+- Fetch user from DB
+- Return current_user
+If invalid → 401
+
+3.  In main.py create: GET /me
+Protected route.
+Return current user.
+
+
+
+
+
+
+
+
+prompt7
+# Create Order Service Layer
+Create app/services/order_service.py and Define with proper typechecking:
+"""
+VALID_TRANSITIONS = {
+    "PENDING_PAYMENT": ["PAYMENT_SUBMITTED"],
+    "PAYMENT_SUBMITTED": ["PAYMENT_CONFIRMED"],
+    "PAYMENT_CONFIRMED": ["IN_PROGRESS"],
+    "IN_PROGRESS": ["SUBMITTED"],
+    "SUBMITTED": ["COMPLETED", "REVISION_REQUESTED"],
+}
+"""
+then create function: def change_order_status(order, new_status) and Validate transition, Raise error if invalid, Update status Never change status directly in routes.
+
+
+
+
+
+prompt8
+# BUILD CORE API MODULES
+## GIG MODULE
+Endpoints:
+- POST /gigs
+- GET /gigs
+- GET /gigs/{id}
+- PATCH /gigs/{id}
+- DELETE /gigs/{id}
+
+### Rules:
+- Only owner can edit/delete
+- Anyone can view active gigs
+
+## ORDER MODULE
+Endpoints:
+- POST /orders
+- PATCH /orders/{id}/submit-payment
+- PATCH /orders/{id}/confirm-payment
+- PATCH /orders/{id}/submit-work
+- PATCH /orders/{id}/approve
+- PATCH /orders/{id}/revision
+
+All status updates MUST go through service layer.
+
+## REVIEW MODULE
+Rules:
+- Only after COMPLETED
+- One review per user per order
+- Prevent duplicates
+
+
+
+
+prompt9
+# MESSAGING SYSTEM
+## REST Messaging
+
+Endpoints:
+- POST /messages
+- GET /messages/{user_id}
+
+Validate:
+- Sender must be authenticated
+- Receiver exists
+
+## WebSocket Implementation
+
+Create: app/websocket/connection_manager.py
+
+
+Implement:
+active_connections: dict[user_id, websocket]
+
+
+WebSocket endpoint:
+/ws/{user_id}
+
+When message sent:
+- Save in DB
+- If receiver connected → push message
